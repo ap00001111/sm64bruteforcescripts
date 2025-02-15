@@ -38,7 +38,7 @@ class M64Header:
             raise ValueError("Unexpected header version")
 
         self.__data = bytearray(data)
-        self.__data[0x27] = 45
+        self.__data[0x27] = 0x45
 
     def toBytes(self):
         return bytes(self.__data)
