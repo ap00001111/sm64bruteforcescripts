@@ -33,11 +33,20 @@ BASIS_NAME = "basis.m64"
 # Num joysticks to test
 JOYSTICK_SEARCH_RANGE = 256
 
+# RNG options
+INDEX_MIN = 0
+INDEX_MAX = 65113 # Searches min<=i<=max
+BLACKLISTED_INDICES = None # Replace with array to use
+WHITELISTED_INDICES = None
+
+
+# Check for desync each frame
+def isSynced(game, frame):
+    return True
 
 # Run after basis m64 inputs, for fixing rng/global timer etc to match state loaded m64
 def syncStateLoaded(game):
-    sm64Tools.setRngIndex(game, 24281)
-    sm64Tools.setGlobalTimer(game, 92006)
+    pass
 
 # Get game vars relevant to tunnel
 def getGameVars(game):
@@ -229,9 +238,15 @@ def mpTestJoystickVariants(thread_id, args):
 
         # Test new inputs
         game.load_state(start_state)
+        desynced = False
         for i in range(LENGTH):
             frame = i + START_FRAME
             inputTools.advanceFrame(game, cur_inputs[i])
+            if not isSynced(game, frame + 1):
+                desynced = True
+                break
+        if desynced:
+            continue
 
         # Save result
         rng_index = sm64Tools.getRngIndex(game)
@@ -276,6 +291,185 @@ def testJoystickVariants(indiv_choices, grouped_choices):
                 time.sleep(0.01)
         except KeyboardInterrupt:
             pass
+
+
+# Find solution for each rng index
+def mpTestRng(thread_id, args):
+    globals().update(args)
+
+    # Load WAFEL
+    lib_full_path = os.path.join(DLL_PATH, f"sm64_{GAME_VERSION}.dll")
+    game = wafel.Game(lib_full_path)
+
+    # Advance to start frame
+    if STATE_LOADED:
+        for frame in range(STATE_OFFSET):
+            inputTools.advanceFrame(game, basis_inputs[frame])
+    syncStateLoaded(game)
+    for frame in range(START_FRAME):
+        inputTools.advanceFrame(game, inputs[frame])
+    start_state = game.save_state()
+
+    cur_inputs = inputs[START_FRAME:END_FRAME].copy()
+
+    # Print start/end state to verify sim accuracy
+    with setup_complete.get_lock():
+        if not setup_complete.value:
+            game_vars = getGameVars(game)
+            printMP("Start frame state - Pos: (% 9.3f,% 9.3f,% 9.3f)  HSpd:% 9.3f  Yaw: %5hu  Coins: %3d  Act: %s" % (*game_vars["pos"], game_vars["hspd"], game_vars["face_angle"][1] & 65535, game_vars["num_coins"], sm64Tools.actionToStr(game_vars["action"])))
+            
+            for i in range(LENGTH):
+                frame = i + START_FRAME
+                inputTools.advanceFrame(game, cur_inputs[i])
+
+            game_vars = getGameVars(game)
+            printMP("  End frame state - Pos: (% 9.3f,% 9.3f,% 9.3f)  HSpd:% 9.3f  Yaw: %5hu  Coins: %3d  Act: %s" % (*game_vars["pos"], game_vars["hspd"], game_vars["face_angle"][1] & 65535, game_vars["num_coins"], sm64Tools.actionToStr(game_vars["action"])))
+            
+            setup_complete.value = True
+
+    # Test
+    local_saved_filenames = []
+    while True:
+        with shared_index.get_lock():
+            if (shared_index.value == test_indices.size):
+                break
+            cur_index = shared_index.value
+            rng_index = test_indices[cur_index]
+            shared_index.value += 1
+
+        game.load_state(start_state)
+        sm64Tools.setRngIndex(game, rng_index)
+        start_state = game.save_state()
+
+        banned_cases = []
+        for case in range(num_cases):
+            # Build stick choices
+            v = case
+            case_dict = {}
+            for frame, lower_choice, upper_choice in indiv_choices:
+                i = frame - START_FRAME
+                cur_buttons = inputTools.splitInputs(cur_inputs[i])[2]
+                chose_lower = ((v & 1) == 1)
+                case_dict[frame] = chose_lower
+                if chose_lower:
+                    cur_choice = lower_choice
+                else:
+                    cur_choice = upper_choice
+                cur_inputs[i] = inputTools.joinInputs(*cur_choice, cur_buttons)
+                v >>= 1
+                
+            for group in grouped_choices:
+                group_size = len(group)
+                num_group_options = group_size + 1
+                first_upper_i = v % num_group_options
+                for i in range(group_size):
+                    frame, lower_choice, upper_choice = group[i]
+                    j = frame - START_FRAME
+                    cur_buttons = inputTools.splitInputs(cur_inputs[j])[2]
+                    chose_lower = (i < first_upper_i)
+                    case_dict[frame] = chose_lower
+                    if chose_lower:
+                        cur_choice = lower_choice
+                    else:
+                        cur_choice = upper_choice
+                    cur_inputs[j] = inputTools.joinInputs(*cur_choice, cur_buttons)
+                v //= num_group_options
+
+            # Skipped banned cases
+            bad_case = False
+            for banned_case in banned_cases:
+                is_match = True
+                for key in banned_case.keys():
+                    if (case_dict[key] != banned_case[key]):
+                        is_match = False
+                        break
+                if is_match:
+                    bad_case = True
+                    break
+            if bad_case:
+                continue
+            
+            game.load_state(start_state)
+            desynced = False
+            for i in range(LENGTH):
+                frame = i + START_FRAME
+                inputTools.advanceFrame(game, cur_inputs[i])
+                if not isSynced(game, frame + 1):
+                    desynced = True
+                    break
+            if desynced:
+                for key in tuple(case_dict.keys()):
+                    if (frame <= key):
+                        del case_dict[key]
+                banned_cases.append(case_dict)
+                continue
+
+            # Save result
+            out_name = OUT_NAME_FMT % rng_index
+            if out_name not in local_saved_filenames:
+                local_saved_filenames.append(out_name)
+                with save_lock:
+                    if not os.path.isfile(out_name):
+                        printMP(f"Saving m64 \"{out_name}\"")
+                        inputs_out = np.concatenate((inputs[:START_FRAME], cur_inputs, inputs[END_FRAME:]))
+                        inputTools.saveM64(out_name, inputs_out, header)
+                        
+            working_index_mask[cur_index] = True
+            break
+
+
+# Start or restart rng testing
+def testRng(indiv_choices, grouped_choices):
+    global working_indices
+
+    num_cases = int((1 << len(indiv_choices)) * np.prod([(len(group) + 1) for group in grouped_choices]))
+    print(f"Total test cases: {num_cases}")
+
+    rel_index_max = (INDEX_MAX - INDEX_MIN) % 65114
+    if (WHITELISTED_INDICES == None):
+        test_indices = [((i + INDEX_MIN) % 65114) for i in range(rel_index_max + 1)]
+    else:
+        test_indices = filter(lambda i: (((i - INDEX_MIN) % 65114) <= rel_index_max), WHITELISTED_INDICES)
+    if (BLACKLISTED_INDICES != None):
+        test_indices = filter(lambda i: i not in BLACKLISTED_INDICES, test_indices)
+    test_indices = np.uint16(test_indices)
+
+    setup_complete = mp.Value(ctypes.c_bool, False)
+    shared_index = mp.Value(ctypes.c_uint16, 0)
+    working_index_mask = mp.Array(ctypes.c_bool, test_indices.size)
+    for i in range(test_indices.size):
+        working_index_mask[i] = False
+    save_lock = mp.Lock()
+
+    args = {
+        "LENGTH": END_FRAME - START_FRAME,
+        "header": header,
+        "inputs": inputs,
+        "setup_complete": setup_complete,
+        "test_indices": test_indices,
+        "shared_index": shared_index,
+        "indiv_choices": indiv_choices,
+        "grouped_choices": grouped_choices,
+        "working_index_mask": working_index_mask,
+        "save_lock": save_lock,
+        "num_cases": num_cases
+    }
+    if STATE_LOADED:
+        args["basis_inputs"] = basis_inputs
+    g = globals()
+    args.update({k: g[k] for k in g.keys() if k.isupper()})
+
+    with ProcessGroup(NUM_THREADS, mpTestRng, (args,)) as processes:
+        try:
+            while processes.active:
+                processes.print()
+                time.sleep(0.01)
+        except KeyboardInterrupt:
+            pass
+
+    working_indices = test_indices[working_index_mask]
+    num_working_indices = working_indices.size
+    print(f"Working indices ({num_working_indices}): {working_indices}")
 
 
 # Print formatted choices for setting up choice groups
