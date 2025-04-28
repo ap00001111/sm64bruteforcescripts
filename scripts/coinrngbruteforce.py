@@ -23,10 +23,10 @@ INF = float("inf")
 FAIL_SCORE = -INF
 
 # Thread count (should be slightly less than total CPU threads)
-NUM_THREADS = 6
+NUM_THREADS = 1
 
 # WAFEL info
-DLL_PATH = "libsm64"
+DLL_PATH = ""
 GAME_VERSION = "us"
 
 # Target m64 info
@@ -236,7 +236,7 @@ if USE_CUDA:
 
     def getNumSuccessfulIndices():
         mario_positions_dev.copy_to_device(mario_positions)
-        coinCollisions[256,256](collected_coin_values_dev, coin_values_dev, collided_coins_dev, mario_positions_dev, coin_positions_dev)
+        coinCollisions[256,256](collected_coin_values_dev, coin_values_dev, coin_effective_radii_dev, collided_coins_dev, mario_positions_dev, coin_positions_dev)
         collected_coin_values_dev.copy_to_host(collected_coin_values)
         cuda.synchronize()
 
@@ -394,7 +394,7 @@ def getPrintInfo(num_successful_indices):
     infoStrs += printInfo("Z Vel: %.3f", vel[2], VEL_WEIGHTS[2], force=False)
     infoStrs += printInfo("HSpd: %.3f", hspd, HSPD_WEIGHT, force=False)
     infoStrs += printInfo("Pitch: %d", face_angle[0], FACE_ANGLE_WEIGHTS[0], force=False)
-    infoStrs += printInfo("Yaw: %d", face_angle[1] % 65535, FACE_ANGLE_WEIGHTS[1], force=False)
+    infoStrs += printInfo("Yaw: %d", face_angle[1] & 65535, FACE_ANGLE_WEIGHTS[1], force=False)
     infoStrs += printInfo("Roll: %d", face_angle[2], FACE_ANGLE_WEIGHTS[2], force=False)
     infoStrs += printInfo("Pitch Vel: %d", angle_vel[0], ANGLE_VEL_WEIGHTS[0], force=False)
     infoStrs += printInfo("Yaw Vel: %u", angle_vel[1], ANGLE_VEL_WEIGHTS[1], force=False)

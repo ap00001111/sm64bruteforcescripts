@@ -14,10 +14,10 @@ from mpManager import ProcessGroup, printMP
 
 INF = float("inf")
 
-NUM_THREADS = 6
+NUM_THREADS = 1
 
 # WAFEL info
-DLL_PATH = "libsm64"
+DLL_PATH = ""
 GAME_VERSION = "us"
 
 # Target m64 info
@@ -141,7 +141,7 @@ def getJoystickVariants():
             if not success:
                 continue
 
-            lower_stick = np.int8((cur_stick_x, cur_stick_y))
+            lower_stick = np.int64((cur_stick_x, cur_stick_y)).astype(np.int8)
             upper_stick = stick
             if (next_stick_data["stick_mag"] < target_mag):
                 lower_stick, upper_stick = upper_stick, lower_stick

@@ -5,7 +5,7 @@ import struct as _struct
 
 
 # Convert to and from int input and split stick/button inputs
-joinInputs = lambda stick_x, stick_y, buttons: (buttons << 16) | ((stick_x & 0xFF) << 8) | (stick_y & 0xFF)
+joinInputs = lambda stick_x, stick_y, buttons: (int(buttons) << 16) | ((int(stick_x) & 0xFF) << 8) | (int(stick_y) & 0xFF)
 def splitInputs(inputs):
     inputs = int(inputs)
     stick_x = (inputs >> 8) & 0xFF
@@ -168,6 +168,8 @@ class M64Header:
     description = __stringProperty(0x300, 256)
 
 
+_wrapInt = lambda v, t: _np.int64(v).astype(t)
+
 # Load m64
 def loadM64(filename):
     with open(filename, "rb") as fp:
@@ -219,7 +221,7 @@ def getNearestJoysticksRaw(base_joystick, n=58564):
     if (n >= 58564):
         n = 58564
 
-    base_joystick = _np.int8(base_joystick)
+    base_joystick = _wrapInt(base_joystick, _np.int8)
     raw_joystick = getProcessedJoystick(*base_joystick)
     joystick_dists = _np.linalg.norm(_fstick_data - raw_joystick, axis=1)
 
@@ -233,7 +235,7 @@ def getNearestJoysticks(mag, yaw, n=20129, mag_weight=1, yaw_weight=0.0001):
         n = 20129
         
     mag_dists = _u_mags - mag
-    yaw_dists = _np.int16(_u_yaws - yaw)
+    yaw_dists = _u_yaws.astype(_np.int16) - _wrapInt(yaw, _np.int16)
     yaw_dists[10064] = 0 # Ignore yaw dist on 0 input
     joystick_dists = mag_weight*_np.square(mag_dists) + yaw_weight*_np.square(_np.float32(yaw_dists))
 

@@ -16,10 +16,10 @@ INF = float("inf")
 FAIL_SCORE = -INF
 
 # Thread count (should be slightly less than total CPU threads)
-NUM_THREADS = 6
+NUM_THREADS = 1
 
 # WAFEL info
-DLL_PATH = "libsm64"
+DLL_PATH = ""
 GAME_VERSION = "us"
 
 # Target m64 info
@@ -260,7 +260,7 @@ def getPrintInfo():
     infoStrs += printInfo("Z Vel: %.3f", vel[2], VEL_WEIGHTS[2], force=False)
     infoStrs += printInfo("HSpd: %.3f", hspd, HSPD_WEIGHT, force=False)
     infoStrs += printInfo("Pitch: %d", face_angle[0], FACE_ANGLE_WEIGHTS[0], force=False)
-    infoStrs += printInfo("Yaw: %d", face_angle[1] % 65535, FACE_ANGLE_WEIGHTS[1], force=False)
+    infoStrs += printInfo("Yaw: %d", face_angle[1] & 65535, FACE_ANGLE_WEIGHTS[1], force=False)
     infoStrs += printInfo("Roll: %d", face_angle[2], FACE_ANGLE_WEIGHTS[2], force=False)
     infoStrs += printInfo("Pitch Vel: %d", angle_vel[0], ANGLE_VEL_WEIGHTS[0], force=False)
     infoStrs += printInfo("Yaw Vel: %u", angle_vel[1], ANGLE_VEL_WEIGHTS[1], force=False)

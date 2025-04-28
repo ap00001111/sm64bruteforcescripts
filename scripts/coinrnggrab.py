@@ -17,10 +17,10 @@ from mpManager import ProcessGroup, printMP, enumQueue
 INF = float("inf")
 
 # Thread count (should be slightly less than total CPU threads)
-NUM_THREADS = 6
+NUM_THREADS = 1
 
 # WAFEL info
-DLL_PATH = "libsm64"
+DLL_PATH = ""
 GAME_VERSION = "us"
 
 # Target m64 info
